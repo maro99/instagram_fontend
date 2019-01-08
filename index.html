@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="css/bootstrap.css" rel="stylesheet">
+  <script src="js/cookie.js"></script>
+  <!-- axios -->
+  <script src="js/axios.js"></script>
+  <!-- jQuery -->
+  <script src="js/jquery.js"></script>
+  <script src="js/post_list.js"></script>
+  <script src="js/fb_login.js"></script>
+</head>
+<body>
+  <div class="container mt-2">
+    <h1>Instagram</h1>
+    <div id="info"></div>
+    <button id="btn-facebook" class="btn btn-primary btn-sm">Facebook Login</button>
+
+    <div class="content">
+    </div>
+
+  </div>
+
+  <script>
+    // 유저가 #btn-facebook를 클릭했을 때,
+    // 1. 브라우저에 페이스북 로그인이 안 되어 있을 경우
+    //  페이스북 로그인 페이지로 이동시키며, 로그인 완료후 여기로 돌아와야 함
+    // 2. 페이스북 로그인은 되어있는데, 앱 승인은 하지 않은 경우
+    //  페이스북에서 앱 승인하는 페이지로 이동하고, 완료 후 다시 여기로 돌아와야 함
+    // 3. 페이스북 로그인도 되어있고, 앱 승인도 된 경우
+    //  유저 정보를 확인해본다
+    //    -> FB.login()
+    init()
+    function init() {
+      getUserInfo();
+    }
+
+    $('#btn-facebook').click(facebookLogin);
+    // 페이스북 로그인을 실행할 함수
+    function facebookLogin() {
+      // FB.login()을 실행하며, 콜백 함수의 response를 로그
+      FB.login(function (response) {
+        // 사용자가 페이스북 로그인과 앱 승인과정을 모두 통과했을 경우
+        if (response.status === 'connected') {
+          // SDK를 사용해서 로그인한 유저 자신의 정보를 가져오는 API
+          FB.api('/me', {fields: 'last_name,first_name,id'}, function (response) {
+            // 받아온 정보를 사용해서 Django쪽으로 토큰을 요청하는 API호출
+            axios.post('http://localhost:8000/api/users/facebook-auth-token/', {
+              facebook_id: response.id,
+              last_name: response.last_name,
+              first_name: response.first_name
+            })
+            .then(function (response) {
+              // Django에서 적절한 응답이 돌아오면 (Token이 돌아오게 됨)
+              // 해당 값을 브라우저의 쿠키에 저장
+              setCookie('token', response.data.token, 12);
+              // 함께 받은 user정보를 #info요소 내부에 텍스트로 삽입
+              $('#info').text(`${response.data.user.last_name}${response.data.user.first_name}(으)로 로그인 중`);
+              // 이제 로그인 버튼은 필요없으니 가림
+              $('#btn-facebook').hide();
+            })
+            .catch(function (error) {
+              console.log(error);
+            });
+          });
+        }
+        // 둘 중에 하나라도 진행이 안 되었을 경우
+        else {
+
+        }
+      }, {scope: 'public_profile'});
+    }
+
+    // 쿠키에 저장되어 있는 token값을 사용해 User정보를 받아오는 함수
+    function getUserInfo() {
+      var token = getCookie('token');
+      if (token) {
+        // User정보는 Profile API에서 받아옴
+        axios({
+          method: 'get',
+          url: 'http://localhost:8000/api/users/profile/',
+          headers: {
+            'Authorization': 'Token ' + getCookie('token')
+          }
+        })
+        .then(function (response) {
+          // 보낸 인증정보가 올바르면 (정상 응답이 오면)
+          // 응답에 포함된 User정보를 사용해 #info요소의 텍스트를 변경
+          $('#info').text(`${response.data.last_name}${response.data.first_name}(으)로 로그인 중`);
+          // 로그인 버튼은 가림
+          $('#btn-facebook').hide();
+        })
+        .catch(function (error) {
+          console.log(error);
+        });
+      }
+    }
+
+  </script>
+</body>
+</html>
